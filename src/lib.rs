@@ -54,40 +54,39 @@ fn build_info_request() -> Vec<u8> {
     let neg_one: i32 = -1;
     let header = b'T';
     let payload = "Source Engine Query\0".as_bytes();
-    let package: Vec<u8> = neg_one
+    neg_one
         .to_le_bytes()
         .iter()
         .chain(vec![header].iter())
         .chain(payload.to_owned().iter())
         .map(|i| i.to_owned())
-        .collect();
-    package
+        .collect()
 }
 
 #[derive(Debug)]
 pub struct InfoPacket {
-    protocol: char,
-    name: String,
-    map: String,
-    folder: String,
-    game: String,
-    id: i16,
-    players: u8,
-    max_players: u8,
-    bots: u8,
-    server_type: char,
-    environment: char,
-    visibility: bool,
-    vac: bool,
-    version: String,
-    edf: u8,
+    pub protocol: char,
+    pub name: String,
+    pub map: String,
+    pub folder: String,
+    pub game: String,
+    pub id: i16,
+    pub players: u8,
+    pub max_players: u8,
+    pub bots: u8,
+    pub server_type: char,
+    pub environment: char,
+    pub visibility: bool,
+    pub vac: bool,
+    pub version: String,
+    pub edf: u8,
 }
 
 pub fn query_info_cursor(socket: &UdpSocket) -> Result<InfoPacket, anyhow::Error> {
     let to_send = build_info_request();
     socket.send_to(&to_send, "192.168.1.116:27015")?;
     let mut buffer: [u8; 1400] = [0x00; 1400];
-    let (size, addr) = socket.recv_from(&mut buffer)?;
+    let (size, _) = socket.recv_from(&mut buffer)?;
 
     let data = buffer[..size].to_vec();
     let mut cursor = Cursor::new(data);
@@ -97,31 +96,39 @@ pub fn query_info_cursor(socket: &UdpSocket) -> Result<InfoPacket, anyhow::Error
         HEADER_SINGLE => println!("single header"),
         _ => println!("different header"),
     }
-    println!("Header is: {}", header);
+
     let protocol: char = cursor.read_u8()?.try_into()?;
-    println!("Protocol is: {}", protocol);
     let name = cursor.read_string()?;
-    println!("Name is: {}", name);
     let map = cursor.read_string()?;
-    println!("Map is: {}", map);
     let folder = cursor.read_string()?;
+    let game = cursor.read_string()?;
+    let id = cursor.read_i16::<LittleEndian>()?;
+    let players = cursor.read_u8()?;
+    let max_players = cursor.read_u8()?;
+    let bots = cursor.read_u8()?;
+    let server_type = cursor.read_char()?;
+    let environment = cursor.read_char()?;
+    let visibility = cursor.read_bool()?;
+    let vac = cursor.read_bool()?;
+    let version = cursor.read_string()?;
+    let edf = cursor.read_u8()?;
 
     Ok(InfoPacket {
         protocol: protocol,
         name: name,
         map: map,
         folder: folder,
-        game: cursor.read_string()?,
-        id: cursor.read_i16::<LittleEndian>()?,
-        players: cursor.read_u8()?,
-        max_players: cursor.read_u8()?,
-        bots: cursor.read_u8()?,
-        server_type: cursor.read_char()?,
-        environment: cursor.read_char()?,
-        visibility: cursor.read_bool()?,
-        vac: cursor.read_bool()?,
-        version: cursor.read_string()?,
-        edf: cursor.read_u8()?,
+        game: game,
+        id: id,
+        players: players,
+        max_players: max_players,
+        bots: bots,
+        server_type: server_type,
+        environment: environment,
+        visibility: visibility,
+        vac: vac,
+        version: version,
+        edf: edf,
     })
 }
 
