@@ -1,7 +1,8 @@
 use byteorder::{LittleEndian, ReadBytesExt};
+use std::env;
 use std::error::Error;
 use std::fmt::Display;
-use std::io::Cursor;
+use std::io::{Cursor, Read};
 use std::net::UdpSocket;
 
 const HEADER_SINGLE: i32 = -1;
@@ -50,17 +51,21 @@ impl Display for QueryError {
     }
 }
 
-fn build_info_request() -> Vec<u8> {
+fn build_info_request(challenge: Option<&[u8]>) -> Vec<u8> {
     let neg_one: i32 = -1;
     let header = b'T';
     let payload = "Source Engine Query\0".as_bytes();
-    neg_one
+    let mut resp: Vec<u8> = neg_one
         .to_le_bytes()
         .iter()
         .chain(vec![header].iter())
         .chain(payload.to_owned().iter())
         .map(|i| i.to_owned())
-        .collect()
+        .collect();
+    if let Some(c) = challenge {
+        resp.extend_from_slice(c);
+    }
+    resp
 }
 
 #[derive(Debug)]
@@ -82,13 +87,25 @@ pub struct InfoPacket {
     pub edf: u8,
 }
 
-pub fn query_info_cursor(socket: &UdpSocket) -> Result<InfoPacket, anyhow::Error> {
-    let to_send = build_info_request();
-    socket.send_to(&to_send, "192.168.1.116:27015")?;
+pub fn query_info_cursor(
+    socket: &UdpSocket,
+    challenge: Option<&[u8]>,
+) -> Result<InfoPacket, anyhow::Error> {
+    let args: Vec<String> = env::args().collect();
+    if args.len() < 1 {
+        return Err(anyhow::anyhow!(
+            "you must provide the host:port as the first argument"
+        ));
+    }
+    let addr = &args[1];
+    let to_send = build_info_request(challenge);
+    dbg!(&to_send);
+    socket.send_to(&to_send, addr)?;
     let mut buffer: [u8; 1400] = [0x00; 1400];
     let (size, _) = socket.recv_from(&mut buffer)?;
 
     let data = buffer[..size].to_vec();
+    dbg!(&data);
     let mut cursor = Cursor::new(data);
     let header = cursor.read_i32::<LittleEndian>()?;
 
@@ -98,11 +115,23 @@ pub fn query_info_cursor(socket: &UdpSocket) -> Result<InfoPacket, anyhow::Error
     }
 
     let protocol: char = cursor.read_u8()?.try_into()?;
+    dbg!(&protocol);
+    if protocol == 'A' {
+        // then this is a challenge request
+        let mut buff = [0_u8; 4];
+        cursor.read_exact(&mut buff)?;
+        return query_info_cursor(socket, Some(&buff));
+    }
     let name = cursor.read_string()?;
+    dbg!(&name);
     let map = cursor.read_string()?;
+    dbg!(&map);
     let folder = cursor.read_string()?;
+    dbg!(&folder);
     let game = cursor.read_string()?;
+    dbg!(&game);
     let id = cursor.read_i16::<LittleEndian>()?;
+    dbg!(&id);
     let players = cursor.read_u8()?;
     let max_players = cursor.read_u8()?;
     let bots = cursor.read_u8()?;
@@ -132,14 +161,6 @@ pub fn query_info_cursor(socket: &UdpSocket) -> Result<InfoPacket, anyhow::Error
     })
 }
 
-// fn extract_string_cursor(cursor: &mut Cursor<Vec<u8>>) -> String {
-//     let mut buffer = Vec::with_capacity(256);
-//     while let Ok(c) = cursor.read_u8() {
-//         if c == 0x00 {
-//             break;
-//         }
-//         buffer.push(c);
-//     }
-
-//     String::from_utf8_lossy(&buffer).into_owned()
-// }
+fn query_players(socket: &UdpSocket) -> Result<(), anyhow::Error> {
+    Ok(())
+}
